@@ -1,3 +1,4 @@
+import os
 from dotenv import load_dotenv
 from langchain.document_loaders import PyPDFLoader
 from langchain_chroma import Chroma
@@ -8,20 +9,33 @@ load_dotenv()
 
 embedding_model = "text-embedding-3-large"
 
-file_path = (
-    "Testdaten/10400552_Festgeld_3_Monate.pdf"
-)
+folder_path = "Testdaten"
 
-loader = PyPDFLoader(file_path)
+def load_pdfs_from_folder(folder_path):
+    # Liste alle Dateien im Ordner auf
+    pdf_files = [f for f in os.listdir(folder_path) if f.endswith('.pdf')]
+    
+    documents = []
+    
+    # Lese alle PDFs im Ordner ein
+    for pdf_file in pdf_files:
+        full_path = os.path.join(folder_path, pdf_file)
+        loader = PyPDFLoader(full_path)
+        documents.extend(loader.load())  # Füge die Dokumente hinzu
+    
+    return documents
 
-docs = loader.load()
+documents = load_pdfs_from_folder(folder_path)
 
 text_splitter = RecursiveCharacterTextSplitter(
     chunk_size=300, chunk_overlap=50)
 
-chunks = text_splitter.split_documents(docs)
+# Teile die Dokumente in Chunks auf
+splitted_docs = []
 
-print(f"Split {len(docs)} documents into {len(chunks)} chunks.")
+chunks = text_splitter.split_documents(documents)
+
+print(f"Split {len(documents)} documents into {len(chunks)} chunks.")
 
 embeddings = OpenAIEmbeddings(
     model=embedding_model)
