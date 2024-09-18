@@ -2,11 +2,12 @@ import os
 from dotenv import load_dotenv
 from langchain.document_loaders import PyPDFLoader
 from langchain_chroma import Chroma
-from langchain_openai import OpenAIEmbeddings
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 load_dotenv()
 
+llm_model = "gpt-4o"
 embedding_model = "text-embedding-3-large"
 
 folder_path = "Testdaten"
@@ -30,9 +31,6 @@ documents = load_pdfs_from_folder(folder_path)
 text_splitter = RecursiveCharacterTextSplitter(
     chunk_size=300, chunk_overlap=50)
 
-# Teile die Dokumente in Chunks auf
-splitted_docs = []
-
 chunks = text_splitter.split_documents(documents)
 
 print(f"Split {len(documents)} documents into {len(chunks)} chunks.")
@@ -48,9 +46,12 @@ vector_store = Chroma.from_documents(
 
 retriever = vector_store.as_retriever()
 
-retrieved_documents = retriever.invoke("Wie hoch ist die Mindesteinlage?")
+# Abfrage Daten aus Vektordatenbank
+""" retrieved_documents = retriever.invoke("Wie hoch ist die Mindesteinlage?")
 
 # Zeige gefundene Datensätze aus Vektordatenbank
 print(retrieved_documents[0].page_content)
 print(retrieved_documents[0].metadata)
-print(len(retrieved_documents))
+print(len(retrieved_documents)) """
+
+llm = ChatOpenAI(model=llm_model)
