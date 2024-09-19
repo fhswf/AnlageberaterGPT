@@ -3,15 +3,29 @@ from langchain_community.chat_message_histories import StreamlitChatMessageHisto
 
 st.title("AnlageberaterGPT")
 
-# Initialisiere Chat message Historie
+# Initialisiere Chat Message Historie
 chat_history = StreamlitChatMessageHistory()
 
-# Setze initial einen Step-Zaehler in session_state
+# Liste der Fragen
+questions = [
+    "Wie heißen Sie?",
+    "Wieviel möchten Sie anlegen?",
+    "Wie hoch ist Ihre Risikobereitschaft?",
+]
 
-step = 1
+# Initialisiere Session-State
+if 'questionCounter' not in st.session_state:
+    st.session_state.questionCounter = 0
 
-with st.chat_message("assistant"):
-    st.write(
+
+def increment(key):
+    st.session_state.questionCounter += 1
+    chat_history.add_user_message(st.session_state[key])
+    print(chat_history.messages)
+
+
+if len(chat_history.messages) == 0:
+    chat_history.add_ai_message(
         "Hallo, ich bin Thomas👋 Ich bin ihr digitaler Anlageberater von der Musterbank eG und möchte Ihnen helfen, "
         "maßgeschneiderte Produkte für die Anlage und Aufbau Ihres Vermögens zu finden. Wir von der Musterbank eG "
         "bieten für die Vermögensverwaltung verschiedene Finanzprodukte an, die auf unterschiedliche Bedürfnisse und "
@@ -20,41 +34,17 @@ with st.chat_message("assistant"):
         "Ihnen anschließend alle offenen Fragen zum Produkt oder zu anderen Themen. Fangen wir nun mit den Fragen "
         "an... 🙂")
 
-if step == 1:
-    print(step)
+for message in chat_history.messages:
+    with st.chat_message(message.type):
+        st.write(message.content)
+
+if st.session_state.questionCounter < len(questions):
     with st.chat_message("assistant"):
-        st.write("Wie heißen Sie?")
+        st.write(questions[st.session_state.questionCounter])
+        chat_history.add_ai_message(questions[st.session_state.questionCounter])
 
-    name = st.chat_input("Wie heißen Sie (Vorname und Nachname)?")
-
-    if name:
-        print("TestName + Steps")
-        with st.chat_message("user"):
-            st.write(name)
-        step += 1
-
-if step == 2:
-    print(step)
-    with st.chat_message("assistant"):
-        st.write("Wieviel möchten Sie anlegen?")
-
-    value = st.chat_input("Wieviel möchten Sie anlegen (in Euro)?")
-
-    if value:
-        print("TestValue + Steps")
-        with st.chat_message("user"):
-            st.write(value)
-        step += 1
-
-if step == 3:
-    print(step)
-    with st.chat_message("assistant"):
-        st.write("Wie hoch ist Ihre Risikobereitschaft?")
-
-    riskTolerance = st.chat_input("Wie hoch ist Ihre Risikobereitschaft??")
-
-    if riskTolerance:
-        print("TestRisk + Steps")
-        with st.chat_message("user"):
-            st.write(riskTolerance)
-        step += 1
+    user_input = st.chat_input(questions[st.session_state.questionCounter], on_submit=increment, key='chat_key',
+                               args=("chat_key",))
+else:
+    print(chat_history.messages)
+    st.write("Ende")
