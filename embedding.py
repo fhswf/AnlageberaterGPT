@@ -12,19 +12,21 @@ embedding_model = "text-embedding-3-large"
 
 folder_path = "Testdaten"
 
+
 def load_pdfs_from_folder(folder_path):
     # Liste alle Dateien im Ordner auf
     pdf_files = [f for f in os.listdir(folder_path) if f.endswith('.pdf')]
-    
+
     documents = []
-    
+
     # Lese alle PDFs im Ordner ein
     for pdf_file in pdf_files:
         full_path = os.path.join(folder_path, pdf_file)
         loader = PyPDFLoader(full_path)
         documents.extend(loader.load())  # Füge die Dokumente hinzu
-    
+
     return documents
+
 
 documents = load_pdfs_from_folder(folder_path)
 
