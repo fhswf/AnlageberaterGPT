@@ -1,5 +1,7 @@
 langchain
 langchain_chroma
 langchain-openai
+langchain-core
 streamlit
 python-dotenv
+pandas

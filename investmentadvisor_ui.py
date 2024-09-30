@@ -3,6 +3,8 @@ from langchain_community.chat_message_histories import StreamlitChatMessageHisto
 
 st.title("AnlageberaterGPT")
 
+#ToDo: Implementiere UI fuer Chatbot
+
 # Initialisiere Chat Message Historie
 chat_history = StreamlitChatMessageHistory()
 
