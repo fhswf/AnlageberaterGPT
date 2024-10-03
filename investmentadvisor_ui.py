@@ -3,7 +3,7 @@ from langchain_community.chat_message_histories import StreamlitChatMessageHisto
 
 st.title("AnlageberaterGPT")
 
-#ToDo: Implementiere UI fuer Chatbot
+# ToDo: Implementiere UI fuer Chatbot
 
 # Initialisiere Chat Message Historie
 chat_history = StreamlitChatMessageHistory()
@@ -12,7 +12,9 @@ chat_history = StreamlitChatMessageHistory()
 questions = [
     "Wie heißen Sie?",
     "Wieviel möchten Sie anlegen?",
-    "Wie hoch ist Ihre Risikobereitschaft?",
+    "Für wie lange können Sie das Geld anlegen (kurzfristig, mittelfristig, langfristig)?",
+    "Wie hoch ist Ihre Bereitschaft, Verluste in Kauf zu nehmen?",
+    "Bevorzugen Sie bestimmte Anlageformen (z. B. Immobilien, Aktien, Anleihen, Kryptowährungen)?",
 ]
 
 # Initialisiere Session-State
