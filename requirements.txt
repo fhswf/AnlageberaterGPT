@@ -5,3 +5,4 @@ langchain-core
 streamlit
 python-dotenv
 pandas
+langgraph
