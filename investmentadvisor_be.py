@@ -29,10 +29,9 @@ embeddings = OpenAIEmbeddings(
 
 class AgentState(TypedDict):
     """The state of the agent."""
-
     # add_messages is a reducer
-    # See https://langchain-ai.github.io/langgraph/concepts/low_level/#reducers
     messages: Annotated[Sequence[BaseMessage], add_messages]
+    documents: Annotated[list[str], "Liste mit Dokumenten"]
 
 
 # TypedDict
@@ -74,7 +73,7 @@ def get_productdata(state: AgentState):
     metadata_value = metadata_json["messages"]
     print(metadata_value)
     mindestanlagebetrag = metadata_value["mindestanlagebetrag"]
-    # anlagedauer = metadata_value["anlagedauer"]
+    anlagedauer = metadata_value["anlagedauer"]
     risikobereitschaft = metadata_value["risikobereitschaft"]
 
     vectordb_full_documents = Chroma(persist_directory="./chroma_langchain_db",
@@ -84,25 +83,25 @@ def get_productdata(state: AgentState):
     # Filterung der Dokumente nach Metadaten
     retriever = vectordb_full_documents.as_retriever(
         search_kwargs={"filter": {
-            '$and': [{'mindestanlagebetrag': {'$eq': mindestanlagebetrag}},
-                     {'risiko': {'$eq': risikobereitschaft}}]},
+            '$and': [{'mindestanlagebetrag': {'$lte': mindestanlagebetrag}},
+                     {'risiko': {'$eq': risikobereitschaft}}, {'laufzeit': {'$eq': anlagedauer}}]},
         })
 
     # Abfrage Daten aus Vektordatenbank
     retrieved_documents = retriever.invoke("")
     print(retrieved_documents)
 
-    prompt = PromptTemplate(
-        template="""Du bist ein Anlageberater von der Musterbank eG und hast soeben ein passendes Produkt gefunden, 
-        dass dem Kunden angeboten werden kann. Nutze die folgenden abgerufene Dokumente, um kurz das Produkt 
-        vorzustellen und die relevanten Informationen zusammenzufassen. Es handelt sich hierbei um ein 
-        Produktinformationsblatt.
-        Hier sind die Informationen zum Produkt: {context}""", input_variables=[context])
+    # prompt = PromptTemplate(
+    #     template="""Du bist ein Anlageberater von der Musterbank eG und hast soeben ein passendes Produkt gefunden,
+    #     dass dem Kunden angeboten werden kann. Nutze die folgenden abgerufene Dokumente, um kurz das Produkt
+    #     vorzustellen und die relevanten Informationen zusammenzufassen. Es handelt sich hierbei um ein
+    #     Produktinformationsblatt.
+    #     Hier sind die Informationen zum Produkt: {context}""", input_variables=[context])
+    #
+    # llm_produktvorstellung = prompt | llm | StrOutputParser()
+    # answer = llm_produktvorstellung.invoke({"context": retrieved_documents})
 
-    llm_produktvorstellung = prompt | llm | StrOutputParser()
-    answer = llm_produktvorstellung.invoke({"context": retrieved_documents})
-
-    return {"messages": [answer]}
+    return {"documents": retrieved_documents}
 
 
 # Liste mit allen Tools die verwendet werden sollen, um passendes Produkt zu finden
@@ -128,6 +127,10 @@ def tool_node(state: AgentState):
     return {"messages": outputs}
 
 
+def format_docs(docs):
+    return "\n\n".join(doc.page_content for doc in docs)
+
+
 def call_model(
         state: AgentState
 ):
@@ -141,10 +144,15 @@ def call_model(
     - Wie hoch ist Ihre Bereitschaft, Verluste in Kauf zu nehmen?
     - Bevorzugen Sie bestimmte Anlageformen (z. B. Immobilien, Aktien, Anleihen, Kryptowährungen)?
 
-    Rufe einen Tool auf, um die Metadaten aus den Antworten zu extrahieren. Anschließend wird eine Funktion 
-    aufgerufen, um ein passendes Produkt zu finden."""
+    Rufe einen Tool auf, um die Metadaten aus den Antworten zu extrahieren. Anschließend soll mithilfe der Metadaten 
+    das passende Dokument beziehungs Produktinformationsblatt gefunden werden, dass ein Produkt von der Bank 
+    bewirbt. Stell das gefundene Produkt kurz vor und bewirb es als passendes Anlageprodukt für den Kunden."""
 
-    response = tool_llm.invoke([system_prompt] + state["messages"])
+    if "documents" in state:
+        documents = state["documents"]
+        response = tool_llm.invoke([system_prompt] + state["messages"] + [format_docs(documents)])
+    else:
+        response = tool_llm.invoke([system_prompt] + state["messages"])
     # We return a list, because this will get added to the existing list
     return {"messages": [response]}
 
@@ -202,22 +210,23 @@ workflow.add_edge("product", "agent")
 # Now we can compile and visualize our graph
 graph = workflow.compile()
 
-# testimg = graph.get_graph().draw_mermaid_png()
-# img = Image.open(io.BytesIO(testimg))
-# img.show()
 
-def print_stream(stream):
-    for s in stream:
-        message = s["messages"][-1]
-        if isinstance(message, tuple):
-            print(message)
-        else:
-            message.pretty_print()
+testimg = graph.get_graph().draw_mermaid_png()
+img = Image.open(io.BytesIO(testimg))
+img.show()
 
-
-inputs = {"messages": [("user", "0 €, kurzfristig, Ich gehe kein Risiko ein, Nein")]}
-
-print_stream(graph.stream(inputs, stream_mode="values"))
+# def print_stream(stream):
+#     for s in stream:
+#         message = s["messages"][-1]
+#         if isinstance(message, tuple):
+#             print(message)
+#         else:
+#             message.pretty_print()
+#
+#
+# inputs = {"messages": [("user", "4000 €, kurzfristig, Ich gehe kein Risiko ein, Nein")]}
+#
+# print_stream(graph.stream(inputs, stream_mode="values"))
 
 # ToDo: Bestimme Metadaten aus Antworten
 # ToDo: Dynamische Suche mit Metadaten
