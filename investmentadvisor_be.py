@@ -6,8 +6,6 @@ from PIL import Image
 from dotenv import load_dotenv
 from langchain_chroma import Chroma
 from langchain_core.messages import ToolMessage, BaseMessage
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import PromptTemplate
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 from langchain_openai import OpenAIEmbeddings
@@ -90,16 +88,6 @@ def get_productdata(state: AgentState):
     # Abfrage Daten aus Vektordatenbank
     retrieved_documents = retriever.invoke("")
     print(retrieved_documents)
-
-    # prompt = PromptTemplate(
-    #     template="""Du bist ein Anlageberater von der Musterbank eG und hast soeben ein passendes Produkt gefunden,
-    #     dass dem Kunden angeboten werden kann. Nutze die folgenden abgerufene Dokumente, um kurz das Produkt
-    #     vorzustellen und die relevanten Informationen zusammenzufassen. Es handelt sich hierbei um ein
-    #     Produktinformationsblatt.
-    #     Hier sind die Informationen zum Produkt: {context}""", input_variables=[context])
-    #
-    # llm_produktvorstellung = prompt | llm | StrOutputParser()
-    # answer = llm_produktvorstellung.invoke({"context": retrieved_documents})
 
     return {"documents": retrieved_documents}
 
@@ -211,22 +199,22 @@ workflow.add_edge("product", "agent")
 graph = workflow.compile()
 
 
-testimg = graph.get_graph().draw_mermaid_png()
-img = Image.open(io.BytesIO(testimg))
-img.show()
+# testimg = graph.get_graph().draw_mermaid_png()
+# img = Image.open(io.BytesIO(testimg))
+# img.show()
 
-# def print_stream(stream):
-#     for s in stream:
-#         message = s["messages"][-1]
-#         if isinstance(message, tuple):
-#             print(message)
-#         else:
-#             message.pretty_print()
-#
-#
-# inputs = {"messages": [("user", "4000 €, kurzfristig, Ich gehe kein Risiko ein, Nein")]}
-#
-# print_stream(graph.stream(inputs, stream_mode="values"))
+def print_stream(stream):
+    for s in stream:
+        message = s["messages"][-1]
+        if isinstance(message, tuple):
+            print(message)
+        else:
+            message.pretty_print()
+
+
+inputs = {"messages": [("user", "4000 €, kurzfristig, Ich gehe kein Risiko ein, Nein")]}
+
+print_stream(graph.stream(inputs, stream_mode="values"))
 
 # ToDo: Bestimme Metadaten aus Antworten
 # ToDo: Dynamische Suche mit Metadaten
