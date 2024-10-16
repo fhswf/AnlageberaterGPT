@@ -1,8 +1,7 @@
-import io
 import json
 from typing import TypedDict, Annotated, Sequence
 
-from PIL import Image
+import streamlit as st
 from dotenv import load_dotenv
 from langchain_chroma import Chroma
 from langchain_core.messages import ToolMessage, BaseMessage
@@ -62,7 +61,6 @@ def retrieve_metadata(prompt: str):
     return {"messages": answer}
 
 
-# ToDo: Umstrukturieren, sodass Langgraph den Workflow bestimmt und nicht GPT
 # Definiere Tool um Metadaten aus den Antworten des Anwenders zu extrahieren
 def get_productdata(state: AgentState):
     """Filtert mithilfe der extrahierten Metadaten die passenden Produktinformationen"""
@@ -100,7 +98,7 @@ tool_llm = llm.bind_tools(tools)
 tools_by_name = {tool.name: tool for tool in tools}
 
 
-# Define our tool node
+# Definiere Tool Node
 def tool_node(state: AgentState):
     outputs = []
     for tool_call in state["messages"][-1].tool_calls:
@@ -119,7 +117,7 @@ def format_docs(docs):
     return "\n\n".join(doc.page_content for doc in docs)
 
 
-def call_model(
+def agent_product_node(
         state: AgentState
 ):
     # Erstelle Prompt fuer Tool-Calling Agent
@@ -135,13 +133,13 @@ def call_model(
     Rufe einen Tool auf, um die Metadaten aus den Antworten zu extrahieren. Anschließend soll mithilfe der Metadaten 
     das passende Dokument beziehungs Produktinformationsblatt gefunden werden, dass ein Produkt von der Bank 
     bewirbt. Stell das gefundene Produkt kurz vor und bewirb es als passendes Anlageprodukt für den Kunden."""
-
+    print(state["messages"])
     if "documents" in state:
         documents = state["documents"]
         response = tool_llm.invoke([system_prompt] + state["messages"] + [format_docs(documents)])
+        st.session_state.messages.append({"role": "assistant", "content": response.content})
     else:
         response = tool_llm.invoke([system_prompt] + state["messages"])
-    # We return a list, because this will get added to the existing list
     return {"messages": [response]}
 
 
@@ -157,16 +155,15 @@ def should_continue(state: AgentState):
         return "continue"
 
 
-# Define a new graph
+# Definiere einen neuen Graph
 workflow = StateGraph(AgentState)
 
-# Define the two nodes we will cycle between
-workflow.add_node("agent", call_model)
+# Definiere alle Nodes zwischen denen kommuniziert wird
+workflow.add_node("agent", agent_product_node)
 workflow.add_node("tools", tool_node)
 workflow.add_node("product", get_productdata)
 
-# Set the entrypoint as `agent`
-# This means that this node is the first one called
+# Setze Einstieg auf `agent`. Der Graph bzw. Prozess startet dementsprechend beim Agent
 workflow.set_entry_point("agent")
 
 # We now add a conditional edge
@@ -190,15 +187,17 @@ workflow.add_conditional_edges(
     },
 )
 
+# Setzen einer Kante von `tools` zur `product` node, um mithilfe der Metadaten passende Dokumente zu suchen
 workflow.add_edge("tools", "product")
-# We now add a normal edge from `tools` to `agent`.
-# This means that after `tools` is called, `agent` node is called next.
+
+# Setzen einer Kante von `product` zur `agent` node, um gefundenes Dokument/Produkt an Agent zu uebergeben
 workflow.add_edge("product", "agent")
 
-# Now we can compile and visualize our graph
+# Compile Grap
 graph = workflow.compile()
 
 
+# Erstelle Graph
 # testimg = graph.get_graph().draw_mermaid_png()
 # img = Image.open(io.BytesIO(testimg))
 # img.show()
@@ -212,9 +211,11 @@ def print_stream(stream):
             message.pretty_print()
 
 
-inputs = {"messages": [("user", "4000 €, kurzfristig, Ich gehe kein Risiko ein, Nein")]}
+def call_graph():
+    inputs = {"messages": [("user", "4000 €, kurzfristig, Ich gehe kein Risiko ein, Nein")]}
 
-print_stream(graph.stream(inputs, stream_mode="values"))
-
-# ToDo: Bestimme Metadaten aus Antworten
-# ToDo: Dynamische Suche mit Metadaten
+    print_stream(graph.stream(inputs, stream_mode="values"))
+# Graph durchlaufen
+# inputs = {"messages": [("user", "4000 €, kurzfristig, Ich gehe kein Risiko ein, Nein")]}
+#
+# graph.stream(inputs, stream_mode="values")
