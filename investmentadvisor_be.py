@@ -5,6 +5,9 @@ import streamlit as st
 from dotenv import load_dotenv
 from langchain_chroma import Chroma
 from langchain_core.messages import ToolMessage, BaseMessage
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.runnables import RunnablePassthrough
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 from langchain_openai import OpenAIEmbeddings
@@ -128,7 +131,6 @@ def agent_product_node(
     - Wieviel möchten Sie anlegen?
     - Für wie lange können Sie das Geld anlegen (kurzfristig, mittelfristig, langfristig)?
     - Wie hoch ist Ihre Bereitschaft, Verluste in Kauf zu nehmen?
-    - Bevorzugen Sie bestimmte Anlageformen (z. B. Immobilien, Aktien, Anleihen, Kryptowährungen)?
 
     Rufe einen Tool auf, um die Metadaten aus den Antworten zu extrahieren. Anschließend soll mithilfe der Metadaten 
     das passende Dokument beziehungs Produktinformationsblatt gefunden werden, dass ein Produkt von der Bank 
@@ -211,11 +213,38 @@ def print_stream(stream):
             message.pretty_print()
 
 
-def call_graph():
-    inputs = {"messages": [("user", "4000 €, kurzfristig, Ich gehe kein Risiko ein, Nein")]}
+def call_graph(answers: str):
+    # "4000 €, kurzfristig, Ich gehe kein Risiko ein, Nein"
+    inputs = {"messages": [("user", answers)]}
 
     print_stream(graph.stream(inputs, stream_mode="values"))
-# Graph durchlaufen
-# inputs = {"messages": [("user", "4000 €, kurzfristig, Ich gehe kein Risiko ein, Nein")]}
-#
-# graph.stream(inputs, stream_mode="values")
+
+
+# ToDo: Ausimplementieren
+def answer_with_rag(user_query: str):
+    template = """Du bist ein Anlageberater von der Musterbank eG und beantwortest die Fragen von Kunden. Verwende die 
+    Chat Historie als auch den retrieved context um die Fragen des Bankkunden zu beantworten. Wenn du die Antwort 
+    nicht weißt, sag dem Kunden, dass du die Informationen nachlieferst. Halte die Antwort so knapp wie möglich.
+
+        Chat history: {chat_history}
+        Context: {context}
+        User question: {user_question}
+        """
+
+    prompt = ChatPromptTemplate.from_messages([("assistant", template), MessagesPlaceholder("chat_history"),
+                                               ("user", "{user_question}")])
+
+    vectordb_chunks = Chroma(persist_directory="./chroma_langchain_db",
+                             collection_name="pdf_collection_chunks",
+                             embedding_function=embeddings)
+
+    # Filterung der Dokumente nach Metadaten
+    retriever = vectordb_chunks.as_retriever()
+
+    rag_chain = ({"chat_history": lambda x: st.session_state.messages, "context": retriever | format_docs,
+                  "user_question": RunnablePassthrough()}
+                 | prompt
+                 | llm
+                 | StrOutputParser())
+
+    return rag_chain.stream({"user_question": user_query})
