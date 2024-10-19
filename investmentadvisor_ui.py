@@ -1,4 +1,3 @@
-import streamlit as st
 from investmentadvisor_be import *
 
 st.title("AnlageberaterGPT")
@@ -38,7 +37,8 @@ questions = [
 
 def increment(key):
     st.session_state.questionCounter += 1
-    st.session_state.messages.append({"role": "user", "content": st.session_state[key]})
+    if st.session_state.questionCounter < len(questions):
+        st.session_state.messages.append({"role": "user", "content": st.session_state[key]})
     st.session_state.answers += ", " + st.session_state[key]
 
 
@@ -49,21 +49,22 @@ if st.session_state.questionCounter < len(questions):
 
     user_input = st.chat_input(questions[st.session_state.questionCounter], on_submit=increment, key='chat_key',
                                args=("chat_key",))
+
 elif st.session_state.questionCounter == len(questions):
     with st.spinner("Bitte warten... Ich suche ihr passendes Anlageprodukt"):
         call_graph(st.session_state.answers)
         produktempfehlung = st.session_state.messages[-1]
         with st.chat_message(produktempfehlung["role"]):
-            st.markdown(produktempfehlung["content"])
+            st.write(produktempfehlung["content"])
+            increment("chat_key")
         with st.chat_message("assistant"):
             st.write("Haben Sie noch weitere Fragen?")
             st.session_state.messages.append({"role": "assistant", "content": "Haben Sie noch weitere Fragen?"})
-        increment("chat_key")
 
-# ToDo: RAG mit Produkt
 if st.session_state.questionCounter > len(questions):
-    if prompt := st.chat_input("Stell eine Frage"):
-        st.session_state.messages.append({"role": "user", "content": prompt})
+    if prompt := st.chat_input("Haben Sie noch weitere Fragen?"):
+        with st.chat_message("user"):
+            response = st.write(prompt)
+            st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("assistant"):
-            response = st.write_stream(answer_with_rag(prompt))
-        st.session_state.messages.append({"role": "assistant", "content": response})
+            st.write(answer_with_rag(prompt))
