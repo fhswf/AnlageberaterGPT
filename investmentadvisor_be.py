@@ -3,11 +3,13 @@ from typing import TypedDict, Annotated, Sequence
 
 import streamlit as st
 from dotenv import load_dotenv
+from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain.chains.history_aware_retriever import create_history_aware_retriever
+from langchain.chains.retrieval import create_retrieval_chain
 from langchain_chroma import Chroma
 from langchain_core.messages import ToolMessage, BaseMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.runnables import RunnablePassthrough
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 from langchain_openai import OpenAIEmbeddings
@@ -222,29 +224,52 @@ def call_graph(answers: str):
 
 # ToDo: Ausimplementieren
 def answer_with_rag(user_query: str):
-    template = """Du bist ein Anlageberater von der Musterbank eG und beantwortest die Fragen von Kunden. Verwende die 
-    Chat Historie als auch den retrieved context um die Fragen des Bankkunden zu beantworten. Wenn du die Antwort 
-    nicht weißt, sag dem Kunden, dass du die Informationen nachlieferst. Halte die Antwort so knapp wie möglich.
+    contextualize_q_system_prompt = (
+        "Given a chat history and the latest user question "
+        "which might reference context in the chat history, "
+        "formulate a standalone question which can be understood "
+        "without the chat history. Do NOT answer the question, "
+        "just reformulate it if needed and otherwise return it as is."
+    )
 
-        Chat history: {chat_history}
-        Context: {context}
-        User question: {user_question}
-        """
-
-    prompt = ChatPromptTemplate.from_messages([("assistant", template), MessagesPlaceholder("chat_history"),
-                                               ("user", "{user_question}")])
+    contextualize_q_prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", contextualize_q_system_prompt),
+            MessagesPlaceholder("chat_history"),
+            ("human", "{input}"),
+        ]
+    )
 
     vectordb_chunks = Chroma(persist_directory="./chroma_langchain_db",
                              collection_name="pdf_collection_chunks",
                              embedding_function=embeddings)
 
-    # Filterung der Dokumente nach Metadaten
+    # ToDo: Retriever fixen (Soll nach Produkt suchen und wird aktuell überschrieben)
     retriever = vectordb_chunks.as_retriever()
 
-    rag_chain = ({"chat_history": lambda x: st.session_state.messages, "context": retriever | format_docs,
-                  "user_question": RunnablePassthrough()}
-                 | prompt
-                 | llm
-                 | StrOutputParser())
+    history_aware_retriever = create_history_aware_retriever(
+        llm, retriever, contextualize_q_prompt
+    )
 
-    return rag_chain.stream({"user_question": user_query})
+    system_prompt = """Du bist ein Anlageberater von der Musterbank eG und beantwortest die Fragen von Kunden. 
+    Verwende die Chat Historie als auch den retrieved context um die Fragen des Bankkunden zu beantworten. Wenn du 
+    die Antwort nicht weißt, sag dem Kunden, dass du die Informationen nachlieferst. Halte die Antwort so knapp wie 
+    möglich. 
+    "\n\n"
+    Context: {context}"""
+
+    qa_prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", system_prompt),
+            MessagesPlaceholder("chat_history"),
+            ("human", "{input}"),
+        ]
+    )
+
+    question_answer_chain = create_stuff_documents_chain(llm, qa_prompt)
+
+    rag_chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
+    response_qa = rag_chain.invoke({"input": user_query, "chat_history": st.session_state.messages})
+    st.session_state.messages.append({"role": "assistant", "content": response_qa["answer"]})
+
+    return response_qa["answer"]
