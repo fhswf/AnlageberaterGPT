@@ -22,6 +22,12 @@ if 'questionCounter' not in st.session_state:
 if 'answers' not in st.session_state:
     st.session_state.answers = ""
 
+if 'produktnummer' not in st.session_state:
+    st.session_state.produktnummer = int()
+
+if 'document_path' not in st.session_state:
+    st.session_state.document_path = ""
+
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.write(message["content"])
@@ -42,6 +48,17 @@ def increment(key):
     st.session_state.answers += ", " + st.session_state[key]
 
 
+@st.fragment
+def provide_productinformation_sheet():
+    with open(st.session_state.document_path, "rb") as pdf_file:
+        pdfbyte = pdf_file.read()
+        st.download_button(label="Download Produktinformationsblatt",
+                           icon=":material/download:",
+                           data=pdfbyte,
+                           file_name="produktinformationsblatt.pdf",
+                           mime='application/octet-stream')
+
+
 if st.session_state.questionCounter < len(questions):
     with st.chat_message("assistant"):
         st.write(questions[st.session_state.questionCounter])
@@ -52,10 +69,13 @@ if st.session_state.questionCounter < len(questions):
 
 elif st.session_state.questionCounter == len(questions):
     with st.spinner("Bitte warten... Ich suche ihr passendes Anlageprodukt"):
+        # ToDo: Produktinformationsblatt als PDF anbieten
         call_graph(st.session_state.answers)
         produktempfehlung = st.session_state.messages[-1]
         with st.chat_message(produktempfehlung["role"]):
             st.write(produktempfehlung["content"])
+            # Stelle Produktinformationsblatt bereit
+            provide_productinformation_sheet()
             increment("chat_key")
         with st.chat_message("assistant"):
             st.write("Haben Sie noch weitere Fragen?")

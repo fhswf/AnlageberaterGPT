@@ -90,6 +90,9 @@ def get_productdata(state: AgentState):
 
     # Abfrage Daten aus Vektordatenbank
     retrieved_documents = retriever.invoke("")
+    document_metadata = retrieved_documents[0].metadata
+    st.session_state.produktnummer = document_metadata.get("produktnummer")
+    st.session_state.document_path = document_metadata.get("source")
     print(retrieved_documents)
 
     return {"documents": retrieved_documents}
@@ -222,40 +225,18 @@ def call_graph(answers: str):
     print_stream(graph.stream(inputs, stream_mode="values"))
 
 
-# ToDo: Ausimplementieren
 def answer_with_rag(user_query: str):
-    contextualize_q_system_prompt = (
-        "Given a chat history and the latest user question "
-        "which might reference context in the chat history, "
-        "formulate a standalone question which can be understood "
-        "without the chat history. Do NOT answer the question, "
-        "just reformulate it if needed and otherwise return it as is."
-    )
-
-    contextualize_q_prompt = ChatPromptTemplate.from_messages(
-        [
-            ("system", contextualize_q_system_prompt),
-            MessagesPlaceholder("chat_history"),
-            ("human", "{input}"),
-        ]
-    )
-
     vectordb_chunks = Chroma(persist_directory="./chroma_langchain_db",
                              collection_name="pdf_collection_chunks",
                              embedding_function=embeddings)
 
-    # ToDo: Retriever fixen (Soll nach Produkt suchen und wird aktuell überschrieben)
-    retriever = vectordb_chunks.as_retriever()
-
-    history_aware_retriever = create_history_aware_retriever(
-        llm, retriever, contextualize_q_prompt
-    )
+    retriever = vectordb_chunks.as_retriever(
+        search_kwargs={"filter": {"produktnummer": st.session_state.produktnummer}})
 
     system_prompt = """Du bist ein Anlageberater von der Musterbank eG und beantwortest die Fragen von Kunden. 
     Verwende die Chat Historie als auch den retrieved context um die Fragen des Bankkunden zu beantworten. Wenn du 
     die Antwort nicht weißt, sag dem Kunden, dass du die Informationen nachlieferst. Halte die Antwort so knapp wie 
     möglich. 
-    "\n\n"
     Context: {context}"""
 
     qa_prompt = ChatPromptTemplate.from_messages(
@@ -268,7 +249,7 @@ def answer_with_rag(user_query: str):
 
     question_answer_chain = create_stuff_documents_chain(llm, qa_prompt)
 
-    rag_chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
+    rag_chain = create_retrieval_chain(retriever, question_answer_chain)
     response_qa = rag_chain.invoke({"input": user_query, "chat_history": st.session_state.messages})
     st.session_state.messages.append({"role": "assistant", "content": response_qa["answer"]})
 
