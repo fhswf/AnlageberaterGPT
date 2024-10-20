@@ -50,7 +50,9 @@ def increment(key):
 
 @st.fragment
 def provide_productinformation_sheet():
-    with open(st.session_state.document_path, "rb") as pdf_file:
+    path = st.session_state.document_path
+    new_path = path.replace('\\', '/')
+    with open(new_path, "rb") as pdf_file:
         pdfbyte = pdf_file.read()
         st.download_button(label="Download Produktinformationsblatt",
                            icon=":material/download:",
