@@ -49,7 +49,6 @@ def increment(key):
     if st.session_state.questionCounter <= len(questions):
         st.session_state.messages.append({"role": "user", "content": st.session_state[key]})
         st.session_state.answers += questions[st.session_state.questionCounter - 1] + " " + st.session_state[key] + ", "
-    print(st.session_state.answers)
 
 
 @st.fragment
@@ -75,7 +74,7 @@ if st.session_state.questionCounter < len(questions):
                                args=("chat_key",))
 
 elif st.session_state.questionCounter == len(questions):
-    with st.spinner("Bitte warten... Ich suche ihr passendes Anlageprodukt"):
+    with st.spinner("Bitte warten... Ich suche Ihr passendes Anlageprodukt"):
         call_graph(st.session_state.answers)
         produktempfehlung = st.session_state.messages[-1]
         with st.chat_message(produktempfehlung["role"]):
@@ -84,8 +83,11 @@ elif st.session_state.questionCounter == len(questions):
             provide_productinformation_sheet()
             increment("chat_key")
         with st.chat_message("assistant"):
-            st.write("Haben Sie noch weitere Fragen?")
-            st.session_state.messages.append({"role": "assistant", "content": "Haben Sie noch weitere Fragen?"})
+            intro_rag_questions = """Wir hoffen, dass wir mit dem Produkt Ihr Interesse geweckt haben. Sehr gerne 
+            möchte ich nun Ihre offenen Fragen zum Produkt beantworten. Wenn Sie fertig sind, können Sie die Seite 
+            einfach verlassen. Das empfohlene Produkt habe ich Ihnen in der Übersicht im Online-Banking hinterlegt."""
+            st.write(intro_rag_questions)
+            st.session_state.messages.append({"role": "assistant", "content": intro_rag_questions})
 
 if st.session_state.questionCounter > len(questions):
     if prompt := st.chat_input("Haben Sie noch weitere Fragen?"):

@@ -131,6 +131,9 @@ def get_productdata(state: AgentState):
 
     # Abfrage Daten aus Vektordatenbank
     retrieved_documents = retriever.invoke("")
+    if len(retrieved_documents) >= 2:
+        print("Filter Nachhaltigkeit")
+
     document_metadata = retrieved_documents[0].metadata
     st.session_state.produktnummer = document_metadata.get("produktnummer")
     st.session_state.document_path = document_metadata.get("source")
@@ -189,6 +192,7 @@ def agent_product_node(
 
     print(state["messages"])
 
+    # ToDo: Fall einbauen, wenn kein Produkt gefunden wurde
     if "documents" in state:
         documents = state["documents"]
         response = tool_llm.invoke([system_prompt] + state["messages"] + [format_docs(documents)])
