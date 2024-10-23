@@ -39,28 +39,68 @@ class InvestmentMetadata(TypedDict):
     """extrahierten Metadaten um ein passendes Produkt zu suchen"""
 
     mindestanlagebetrag: Annotated[int, ..., "Der Betrag den der Kunde anlegen möchte"]
-    anlagedauer: Annotated[
+    laufzeit: Annotated[
         str, ..., "Die Dauer, wie lange der Kunde das Geld anlegen möchte (kurzfristig, mittelfristig, langfristig)"]
-    risikobereitschaft: Annotated[
+    risiko: Annotated[
         str, ..., "Wie Risikobereit ist der Kunde (kein Risiko, mittleres Risiko, hohes Risiko"]
+    kosten: Annotated[
+        str, ..., "Bereitschaft des Kunden, für die Geldanlage Kosten aufzunehmen (ja, nein)"]
+    nachhaltigkeit: Annotated[
+        str, ..., "Die Interesse des Kunden, ob er an nachhaltige Produkte interessiert ist (ja, nein)"]
 
 
-# Definiere Tool um Metadaten aus den Antworten des Anwenders zu extrahieren
+# Definiere Tool um Metadaten aus den Antworten des Anwenders zu ermitteln
+# Verwendung eines Few-Shot-Prompt für bessere Ermittlung der Metadaten
+# Structured LLM: Ausgabe des LLM in Form von vordefinierter TypedDict
 @tool
-def retrieve_metadata(prompt: str):
-    """Bestimmt beziehungsweise extrahiert mithilfe GPT-Modell Metadaten aus den Antworten"""
+def retrieve_metadata(customer_input: str):
+    """Extrahiert mithilfe GPT-Modell Metadaten aus den Antworten"""
 
-    prompt = """Für die folgenden Fragen extrahierst du aus den Antworten Informationen zum Kunden, die später 
-    benötigt werden: - Wieviel möchten Sie anlegen? Hier soll aus der Antwort nur der Betrag entnommen werden, 
-    den der Kunde anlegen möchte. - Für wie lange können Sie das Geld anlegen (kurzfristig, mittelfristig, 
-    langfristig)? Hier sollst du aus der Antwort des Kunden bestimmen, ob der Kunde kurzfristig, mittelfristig oder 
-    langfristig anlegt. Antworte nur mit einem der Möglichkeiten. - Wie hoch ist Ihre Bereitschaft, Verluste in Kauf 
-    zu nehmen? Hier sollst du die Risikobereitschaft aus der Antwort des Kunden auswerten. Hierfür sollst du eines 
-    der Möglichkeiten ausgeben: kein Risiko, mittleres Risiko, hohes Risiko
-    Der Kunde hat folgende Antworten (nacheinander) gegeben: """ + prompt
+    retrieve_metadata_system = """Du bist ein spezialisierter Anlageberater von einer Bank. Du ermittelst anhand der 
+    gegebenen Fragen und den dazugehörigen Antworten die folgende Metadaten: Mindestanlagebetrag, Laufzeit, Risiko, 
+    Kosten und Nachhaltigkeit. 
+    \n 
+    Der Mindestanlagebetrag startet von 0 € bis unendlich. Den Betrag ermittelst du aus der Antwort der Frage: Wieviel 
+    möchten Sie anlegen? 
+    \n 
+    Bei der Laufzeit gibt es drei Möglichkeiten: kurzfristig, mittelfristig oder langfristig. Die Laufzeit bestimmst du 
+    aus der Antwort der Frage: Für wie lange können Sie das Geld anlegen (kurzfristig, mittelfristig, langfristig)? 
+    \n 
+    Das Risiko teilt sich in drei Kategorien auf: kein Risiko, mittleres Risiko oder hohes Risiko. Die richtige 
+    Risikoklasse ermittelst du aus den Antworten mehrerer Fragen: "Wie würden Sie Ihre Risikobereitschaft einschätzen 
+    (z. B. kein Risiko, mittleres Risiko, hohes Risiko?" und "Haben Sie in der Vergangenheit bereits riskante 
+    Investments getätigt (z. B. Aktien, Derivate) und wie haben Sie sich dabei gefühlt? 
+    \n 
+    Bei den Kosten sollst du herausfinden, ob der Kunde bereit ist Kosten für die Anlage aufzunehmen: ja oder nein.  
+    Die Antwort bestimmst du aus der Frage: Was ist Ihnen wichtiger: keine Kosten oder die Möglichkeit, mehr aus Ihrer 
+    Anlage herauszuholen? 
+    \n 
+    Bei der Nachhaltigkeit gibt es zwei Möglichkeiten, ja oder nein. Die Antwort bestimmst du aus der Frage: Insofern 
+    in unserem Produktportfolio vorhanden, interessieren Sie sich für nachhaltige Anlageprodukte? 
+    \n\n 
+    Hier sind ein paar Beispiele für ermittelte Metadaten: 
+    \n 
+    example_user: Wieviel möchten Sie anlegen? Ich möchte 4000 € anlegen example_assistant: mindestanlagebetrag: 4000 
+    \n 
+    example_user: Wieviel möchten Sie anlegen? Ich habe noch keine Vorstellung wieviel ich anlegen möchte 
+    example_assistant: mindestanlagebetrag: 0 
+    \n 
+    example_user: Für wie lange können Sie das Geld anlegen (kurzfristig, mittelfristig, langfristig)? Ich kann mein 
+    Geld für eine längere Zeit anlegen. 
+    example_assistant: laufzeit: "langfristig"
+    \n 
+    example_user: Für wie lange können Sie das Geld anlegen (kurzfristig, mittelfristig, langfristig)? Ich kann mein 
+    Geld für ein paar Monate anlegen 
+    example_assistant: laufzeit: "mittelfristig" 
+    \n 
+    example_user: Was ist Ihnen wichtiger: keine Kosten oder die Möglichkeit, mehr aus Ihrer Anlage herauszuholen? 
+    Ich will lieber nichts bezahlen example_assistant: kosten: nein"""
 
+    prompt = ChatPromptTemplate.from_messages([("system", retrieve_metadata_system), ("human", "{input}")])
     structured_llm = llm.with_structured_output(InvestmentMetadata)
-    answer = structured_llm.invoke(prompt)
+    few_shot_structured_llm = prompt | structured_llm
+
+    answer = few_shot_structured_llm.invoke(customer_input)
     return {"messages": answer}
 
 
@@ -72,8 +112,11 @@ def get_productdata(state: AgentState):
     metadata_value = metadata_json["messages"]
     print(metadata_value)
     mindestanlagebetrag = metadata_value["mindestanlagebetrag"]
-    anlagedauer = metadata_value["anlagedauer"]
-    risikobereitschaft = metadata_value["risikobereitschaft"]
+    laufzeit = metadata_value["laufzeit"]
+    risiko = metadata_value["risiko"]
+    kosten = metadata_value["kosten"]
+    # ToDo: Chatbot mitgeben, dass nachhaltiges Produkt nicht gefunden wurde
+    nachhaltigkeit = metadata_value["nachhaltigkeit"]
 
     vectordb_full_documents = Chroma(persist_directory="./chroma_langchain_db",
                                      collection_name="pdf_collection_documents",
@@ -82,8 +125,8 @@ def get_productdata(state: AgentState):
     # Filterung der Dokumente nach Metadaten
     retriever = vectordb_full_documents.as_retriever(
         search_kwargs={"filter": {
-            '$and': [{'mindestanlagebetrag': {'$lte': mindestanlagebetrag}},
-                     {'risiko': {'$eq': risikobereitschaft}}, {'laufzeit': {'$eq': anlagedauer}}]},
+            '$and': [{'mindestanlagebetrag': {'$lte': mindestanlagebetrag}}, {'laufzeit': {'$eq': laufzeit}},
+                     {'risiko': {'$eq': risiko}}, {'kosten': {'$eq': kosten}}]},
         })
 
     # Abfrage Daten aus Vektordatenbank
@@ -127,18 +170,25 @@ def agent_product_node(
         state: AgentState
 ):
     # Erstelle Prompt fuer Tool-Calling Agent
-    system_prompt = """Du bist ein digitaler Anlageberater und berätst Kunden zum Thema Vermögensanlage. Der Kunde 
-    beantwortet mehrere Fragen, um mit dem sich ein Anlageprofil erstellen lässt. Zu den folgenden Fragen erhälst du 
-    von dem Kunden jeweils eine Antwort:
+    system_prompt = """Du bist ein digitaler Anlageberater von der Musterbank eG und berätst Kunden zum Thema 
+    Vermögensanlage. Der Kunde beantwortet mehrere Fragen, mit dem sich ein Anlageprofil erstellen lässt. Zu den 
+    folgenden Fragen erhälst du von dem Kunden Antworten:
 
     - Wieviel möchten Sie anlegen?
     - Für wie lange können Sie das Geld anlegen (kurzfristig, mittelfristig, langfristig)?
-    - Wie hoch ist Ihre Bereitschaft, Verluste in Kauf zu nehmen?
+    - Wie würden Sie Ihre Risikobereitschaft einschätzen (z. B. kein Risiko, mittleres Risiko, hohes Risiko)?
+    - Haben Sie in der Vergangenheit bereits riskante Investments getätigt (z. B. Aktien, Derivate) und wie haben Sie 
+    sich dabei gefühlt?
+    - Was ist Ihnen wichtiger: keine Kosten oder die Möglichkeit, mehr aus Ihrer Anlage herauszuholen?
+    - Insofern in unserem Produktportfolio vorhanden, interessieren Sie sich für nachhaltige Anlageprodukte?
 
-    Rufe einen Tool auf, um die Metadaten aus den Antworten zu extrahieren. Anschließend soll mithilfe der Metadaten 
-    das passende Dokument beziehungs Produktinformationsblatt gefunden werden, dass ein Produkt von der Bank 
-    bewirbt. Stell das gefundene Produkt kurz vor und bewirb es als passendes Anlageprodukt für den Kunden."""
+    Rufe einen Tool auf, um die Metadaten aus dem Input (Fragen und Antworten) zu extrahieren. Anschließend soll 
+    mithilfe der Metadaten ein passendes Dokument beziehungsweise Produktinformationsblatt gefunden werden, 
+    dass ein Produkt von der Bank bewirbt. Stell das gefundene Produkt kurz vor und bewirb es auf Basis der Antworten 
+    als passendes Anlageprodukt für den Kunden."""
+
     print(state["messages"])
+
     if "documents" in state:
         documents = state["documents"]
         response = tool_llm.invoke([system_prompt] + state["messages"] + [format_docs(documents)])
@@ -163,7 +213,7 @@ def should_continue(state: AgentState):
 # Definiere einen neuen Graph
 workflow = StateGraph(AgentState)
 
-# Definiere alle Nodes zwischen denen kommuniziert wird
+# Definiere alle Nodes, zwischen denen kommuniziert wird
 workflow.add_node("agent", agent_product_node)
 workflow.add_node("tools", tool_node)
 workflow.add_node("product", get_productdata)

@@ -29,9 +29,9 @@ for option in splitting_option:
         doc.metadata["produktnummer"] = metadaten["Produktnummer"].item()
         doc.metadata["mindestanlagebetrag"] = int(metadaten["Mindestanlagebetrag"].item())
         doc.metadata["laufzeit"] = metadaten["Laufzeit"].item()
-        doc.metadata["risiko"] = metadaten["Risiko"].item()
-        doc.metadata["gutschrift"] = metadaten["Gutschrift"].item()
         doc.metadata["kosten"] = metadaten["Kosten"].item()
+        doc.metadata["risiko"] = metadaten["Risiko"].item()
+        doc.metadata["nachhaltigkeit"] = metadaten["Nachhaltigkeit"].item()
 
 
     def load_pdfs_from_folder(path):
@@ -64,7 +64,7 @@ for option in splitting_option:
 
     if option == "pdf_collection_chunks":
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=100, chunk_overlap=50)
+            chunk_size=150, chunk_overlap=50)
 
         chunks = text_splitter.split_documents(documents)
 
