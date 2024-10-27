@@ -13,6 +13,7 @@ from langchain_openai import ChatOpenAI
 from langchain_openai import OpenAIEmbeddings
 from langgraph.constants import END
 from langgraph.graph import StateGraph, add_messages
+from langchain_core.documents import Document
 
 load_dotenv()
 
@@ -43,8 +44,6 @@ class InvestmentMetadata(TypedDict):
         str, ..., "Die Dauer, wie lange der Kunde das Geld anlegen möchte (kurzfristig, mittelfristig, langfristig)"]
     risiko: Annotated[
         str, ..., "Wie Risikobereit ist der Kunde (kein Risiko, mittleres Risiko, hohes Risiko"]
-    kosten: Annotated[
-        str, ..., "Bereitschaft des Kunden, für die Geldanlage Kosten aufzunehmen (ja, nein)"]
     nachhaltigkeit: Annotated[
         str, ..., "Die Interesse des Kunden, ob er an nachhaltige Produkte interessiert ist (ja, nein)"]
 
@@ -57,10 +56,10 @@ def retrieve_metadata(customer_input: str):
     """Extrahiert mithilfe GPT-Modell Metadaten aus den Antworten"""
 
     retrieve_metadata_system = """Du bist ein spezialisierter Anlageberater von einer Bank. Du ermittelst anhand der 
-    gegebenen Fragen und den dazugehörigen Antworten die folgende Metadaten: Mindestanlagebetrag, Laufzeit, Risiko, 
-    Kosten und Nachhaltigkeit. 
+    gegebenen Fragen und den dazugehörigen Antworten die folgende Metadaten: Mindestanlagebetrag, Laufzeit, Risiko und 
+    Nachhaltigkeit.
     \n 
-    Der Mindestanlagebetrag startet von 0 € bis unendlich. Den Betrag ermittelst du aus der Antwort der Frage: Wieviel 
+    Der Mindestanlagebetrag startet von 0 € bis unendlich. Den Betrag ermittelst du aus der Antwort der Frage: Wie viel 
     möchten Sie anlegen? 
     \n 
     Bei der Laufzeit gibt es drei Möglichkeiten: kurzfristig, mittelfristig oder langfristig. Die Laufzeit bestimmst du 
@@ -70,10 +69,6 @@ def retrieve_metadata(customer_input: str):
     Risikoklasse ermittelst du aus den Antworten mehrerer Fragen: "Wie würden Sie Ihre Risikobereitschaft einschätzen 
     (z. B. kein Risiko, mittleres Risiko, hohes Risiko?" und "Haben Sie in der Vergangenheit bereits riskante 
     Investments getätigt (z. B. Aktien, Derivate) und wie haben Sie sich dabei gefühlt? 
-    \n 
-    Bei den Kosten sollst du herausfinden, ob der Kunde bereit ist Kosten für die Anlage aufzunehmen: ja oder nein.  
-    Die Antwort bestimmst du aus der Frage: Was ist Ihnen wichtiger: keine Kosten oder die Möglichkeit, mehr aus Ihrer 
-    Anlage herauszuholen? 
     \n 
     Bei der Nachhaltigkeit gibt es zwei Möglichkeiten, ja oder nein. Die Antwort bestimmst du aus der Frage: Insofern 
     in unserem Produktportfolio vorhanden, interessieren Sie sich für nachhaltige Anlageprodukte? 
@@ -91,10 +86,7 @@ def retrieve_metadata(customer_input: str):
     \n 
     example_user: Für wie lange können Sie das Geld anlegen (kurzfristig, mittelfristig, langfristig)? Ich kann mein 
     Geld für ein paar Monate anlegen 
-    example_assistant: laufzeit: "mittelfristig" 
-    \n 
-    example_user: Was ist Ihnen wichtiger: keine Kosten oder die Möglichkeit, mehr aus Ihrer Anlage herauszuholen? 
-    Ich will lieber nichts bezahlen example_assistant: kosten: nein"""
+    example_assistant: laufzeit: "mittelfristig" """
 
     prompt = ChatPromptTemplate.from_messages([("system", retrieve_metadata_system), ("human", "{input}")])
     structured_llm = llm.with_structured_output(InvestmentMetadata)
@@ -102,6 +94,21 @@ def retrieve_metadata(customer_input: str):
 
     answer = few_shot_structured_llm.invoke(customer_input)
     return {"messages": answer}
+
+
+# Funktion, die das passende Dokument zurückgibt
+def finde_passendes_dokument(nachhaltigkeit_gewünscht: str, dokumente: Document):
+    # Zuerst filtern wir die nachhaltigen Produkte, falls der Kunde das möchte
+    if nachhaltigkeit_gewünscht == "ja":
+        nachhaltige_dokumente = [doc for doc in dokumente if doc.metadata.get("nachhaltigkeit") == "ja"]
+
+        # Wenn ein nachhaltiges Dokument vorhanden ist, geben wir es zurück
+        if nachhaltige_dokumente:
+            return nachhaltige_dokumente[0]
+
+    # Wenn kein nachhaltiges Produkt gefunden wurde oder der Kunde keine Präferenz hat,
+    # nehmen wir das erste verfügbare Produkt
+    return dokumente[0]
 
 
 # Definiere Tool um Metadaten aus den Antworten des Anwenders zu extrahieren
@@ -114,8 +121,6 @@ def get_productdata(state: AgentState):
     mindestanlagebetrag = metadata_value["mindestanlagebetrag"]
     laufzeit = metadata_value["laufzeit"]
     risiko = metadata_value["risiko"]
-    kosten = metadata_value["kosten"]
-    # ToDo: Chatbot mitgeben, dass nachhaltiges Produkt nicht gefunden wurde
     nachhaltigkeit = metadata_value["nachhaltigkeit"]
 
     vectordb_full_documents = Chroma(persist_directory="./chroma_langchain_db",
@@ -126,17 +131,18 @@ def get_productdata(state: AgentState):
     retriever = vectordb_full_documents.as_retriever(
         search_kwargs={"filter": {
             '$and': [{'mindestanlagebetrag': {'$lte': mindestanlagebetrag}}, {'laufzeit': {'$eq': laufzeit}},
-                     {'risiko': {'$eq': risiko}}, {'kosten': {'$eq': kosten}}]},
+                     {'risiko': {'$eq': risiko}}]},
         })
 
     # Abfrage Daten aus Vektordatenbank
     retrieved_documents = retriever.invoke("")
-    if len(retrieved_documents) >= 2:
-        print("Filter Nachhaltigkeit")
 
-    document_metadata = retrieved_documents[0].metadata
-    st.session_state.produktnummer = document_metadata.get("produktnummer")
-    st.session_state.document_path = document_metadata.get("source")
+    if retrieved_documents:
+        filtered_document = finde_passendes_dokument(nachhaltigkeit, retrieved_documents)
+        document_metadata = filtered_document.metadata
+        st.session_state.produktnummer = document_metadata.get("produktnummer")
+        st.session_state.document_path = document_metadata.get("source")
+        st.session_state.empty_product = False
     print(retrieved_documents)
 
     return {"documents": retrieved_documents}
@@ -177,12 +183,11 @@ def agent_product_node(
     Vermögensanlage. Der Kunde beantwortet mehrere Fragen, mit dem sich ein Anlageprofil erstellen lässt. Zu den 
     folgenden Fragen erhälst du von dem Kunden Antworten:
 
-    - Wieviel möchten Sie anlegen?
+    - Wie viel möchten Sie anlegen?
     - Für wie lange können Sie das Geld anlegen (kurzfristig, mittelfristig, langfristig)?
     - Wie würden Sie Ihre Risikobereitschaft einschätzen (z. B. kein Risiko, mittleres Risiko, hohes Risiko)?
     - Haben Sie in der Vergangenheit bereits riskante Investments getätigt (z. B. Aktien, Derivate) und wie haben Sie 
     sich dabei gefühlt?
-    - Was ist Ihnen wichtiger: keine Kosten oder die Möglichkeit, mehr aus Ihrer Anlage herauszuholen?
     - Insofern in unserem Produktportfolio vorhanden, interessieren Sie sich für nachhaltige Anlageprodukte?
 
     Rufe einen Tool auf, um die Metadaten aus dem Input (Fragen und Antworten) zu extrahieren. Anschließend soll 
@@ -192,11 +197,12 @@ def agent_product_node(
 
     print(state["messages"])
 
-    # ToDo: Fall einbauen, wenn kein Produkt gefunden wurde
-    if "documents" in state:
+    if "documents" in state and st.session_state.empty_product is False:
         documents = state["documents"]
         response = tool_llm.invoke([system_prompt] + state["messages"] + [format_docs(documents)])
         st.session_state.messages.append({"role": "assistant", "content": response.content})
+    elif "documents" in state and st.session_state.empty_product:
+        response = {"role": "assistant", "content": "Kein passendes Produkt gefunden!"}
     else:
         response = tool_llm.invoke([system_prompt] + state["messages"])
     return {"messages": [response]}
