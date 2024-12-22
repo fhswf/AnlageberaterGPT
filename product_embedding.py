@@ -9,7 +9,6 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 load_dotenv()
 
 # Auswahl Modell
-llm_model = "gpt-4o"
 embedding_model = "text-embedding-3-large"
 
 folder_path = "testdaten"
@@ -59,9 +58,11 @@ for option in splitting_option:
 
     documents = load_pdfs_from_folder(folder_path)
 
+    # Initialisiere Embedding-Modell
     embeddings = OpenAIEmbeddings(
         model=embedding_model)
 
+    # Erstelle DB-Collection mit gesplitteten und originalen Dokumente
     if option == "pdf_collection_chunks":
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=150, chunk_overlap=50)

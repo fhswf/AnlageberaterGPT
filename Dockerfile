@@ -21,4 +21,4 @@ RUN pip install --no-cache-dir --upgrade -r /app/requirements.txt
 EXPOSE 80
 
 ENTRYPOINT ["streamlit", "run", "investmentadvisor_ui.py"]
-CMD ["census_app.py"]
+CMD ["investmentadvisor_ui.py"]

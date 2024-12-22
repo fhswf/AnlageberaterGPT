@@ -1,6 +1,6 @@
 import json
 from typing import TypedDict, Annotated, Sequence
-
+from PIL import Image
 import streamlit as st
 from dotenv import load_dotenv
 from langchain.chains.combine_documents import create_stuff_documents_chain
@@ -14,6 +14,7 @@ from langchain_openai import OpenAIEmbeddings
 from langgraph.constants import END
 from langgraph.graph import StateGraph, add_messages
 from langchain_core.documents import Document
+import io
 
 load_dotenv()
 
@@ -29,8 +30,7 @@ embeddings = OpenAIEmbeddings(
 
 
 class AgentState(TypedDict):
-    """The state of the agent."""
-    # add_messages is a reducer
+    """Initialisiere AgentState fuer Kommunikation im Graph"""
     messages: Annotated[Sequence[BaseMessage], add_messages]
     documents: Annotated[list[str], "Liste mit Dokumenten"]
 
@@ -208,14 +208,14 @@ def agent_product_node(
     return {"messages": [response]}
 
 
-# Define the conditional edge that determines whether to continue or not
+# Definiere Funktion die das naechste vorgehen (ja nach Kondition) dynamisch bestimmt
 def should_continue(state: AgentState):
     messages = state["messages"]
     last_message = messages[-1]
-    # If there is no function call, then we finish
+    # Wenn kein Tool aufgerufen wird, dann gilt der Graph-Workflow als beendet
     if not last_message.tool_calls:
         return "end"
-    # Otherwise if there is, we continue
+    # Alternativ wird der Workflow weiter durchgefuehrt
     else:
         return "continue"
 
@@ -231,23 +231,12 @@ workflow.add_node("product", get_productdata)
 # Setze Einstieg auf `agent`. Der Graph bzw. Prozess startet dementsprechend beim Agent
 workflow.set_entry_point("agent")
 
-# We now add a conditional edge
+# Bestimme dynamische Kante im Graph. Der Graph ruft entweder ein Tool auf oder beendet den Prozess
 workflow.add_conditional_edges(
-    # First, we define the start node. We use `agent`.
-    # This means these are the edges taken after the `agent` node is called.
     "agent",
-    # Next, we pass in the function that will determine which node is called next.
     should_continue,
-    # Finally we pass in a mapping.
-    # The keys are strings, and the values are other nodes.
-    # END is a special node marking that the graph should finish.
-    # What will happen is we will call `should_continue`, and then the output of that
-    # will be matched against the keys in this mapping.
-    # Based on which one it matches, that node will then be called.
     {
-        # If `tools`, then we call the tool node.
         "continue": "tools",
-        # Otherwise we finish.
         "end": END,
     },
 )
@@ -258,7 +247,7 @@ workflow.add_edge("tools", "product")
 # Setzen einer Kante von `product` zur `agent` node, um gefundenes Dokument/Produkt an Agent zu uebergeben
 workflow.add_edge("product", "agent")
 
-# Compile Grap
+# Compile Graph
 graph = workflow.compile()
 
 
@@ -276,13 +265,14 @@ def print_stream(stream):
             message.pretty_print()
 
 
+# Methode um Graph aufzurufen
 def call_graph(answers: str):
-    # "4000 €, kurzfristig, Ich gehe kein Risiko ein, Nein"
     inputs = {"messages": [("user", answers)]}
 
     print_stream(graph.stream(inputs, stream_mode="values"))
 
 
+# RAG-Funktion um fuer Kundenfragen eine Antwort auf Basis der Produktinformationen zu dokumentieren
 def answer_with_rag(user_query: str):
     vectordb_chunks = Chroma(persist_directory="./chroma_langchain_db",
                              collection_name="pdf_collection_chunks",
@@ -291,10 +281,10 @@ def answer_with_rag(user_query: str):
     retriever = vectordb_chunks.as_retriever(
         search_kwargs={"filter": {"produktnummer": st.session_state.produktnummer}})
 
-    system_prompt = """Du bist ein Anlageberater von der Musterbank eG und beantwortest die Fragen von Kunden. 
-    Verwende die Chat Historie als auch den retrieved context um die Fragen des Bankkunden zu beantworten. Wenn du 
-    die Antwort nicht weißt, sag dem Kunden, dass du die Informationen nachlieferst. Halte die Antwort so knapp wie 
-    möglich. 
+    system_prompt = """Du bist ein Anlageberater von der Musterbank eG und beantwortest die Fragen von Kunden.
+    Verwende die Chat Historie als auch den retrieved context um die Fragen des Bankkunden zu beantworten. Wenn du
+    die Antwort nicht weißt, sag dem Kunden, dass du die Informationen nachlieferst. Halte die Antwort so knapp wie
+    möglich.
     Context: {context}"""
 
     qa_prompt = ChatPromptTemplate.from_messages(

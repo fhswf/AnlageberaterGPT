@@ -4,7 +4,7 @@ st.title("Investi AI - Digitale Anlageberatung")
 
 antworten = ""
 
-# Initialize chat history
+# Initialisiere Chat-Historie
 if "messages" not in st.session_state:
     st.session_state.messages = [{"role": "assistant", "content":
         """Hallo, ich bin Investi👋 Ich bin Ihr digitaler Anlageberater von der Musterbank eG und möchte Ihnen 
@@ -67,6 +67,7 @@ def provide_productinformation_sheet():
                            mime='application/octet-stream')
 
 
+# Stelle dem Kunden nacheinander Fragen. Inkrementiere den Counter nach jeder Kundenantwort
 if st.session_state.questionCounter < len(questions):
     with st.chat_message("assistant"):
         st.write(questions[st.session_state.questionCounter])
@@ -76,6 +77,8 @@ if st.session_state.questionCounter < len(questions):
                                key='chat_key',
                                args=("chat_key",))
 
+# Nachdem alle Fragen vom Kunden beantwortet wurden, soll ein passendes Produkt auf Basis der Antworten gefunden werden
+# Ruft die entsprechend Backend-Funktion auf und bietet Produktinformationsblatt zum Download bereit
 elif st.session_state.questionCounter == len(questions):
     with st.spinner("Bitte warten... Ich suche Ihr passendes Anlageprodukt"):
         call_graph(st.session_state.answers)
@@ -94,6 +97,7 @@ elif st.session_state.questionCounter == len(questions):
                 st.session_state.messages.append({"role": "assistant", "content": intro_rag_questions})
         increment("chat_key")
 
+# Nachdem Produktempfehlung ausgegeben wurde, kann der Kunde ueber Oberflaeche Fragen stellen
 if st.session_state.questionCounter > len(questions) and st.session_state.empty_product is False:
     if prompt := st.chat_input("Haben Sie noch weitere Fragen?"):
         with st.chat_message("user"):
